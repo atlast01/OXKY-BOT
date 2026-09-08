@@ -47,11 +47,11 @@ function calculateDuration(startDateStr) {
   return `${years} ปี ${months} เดือน`;
 }
 
-// ฟังก์ชันตรวจสอบและส่งข้อความแจ้งเตือน
+// ฟังก์ชันตรวจสอบและส่งข้อความแจ้งเตือน (Cron Job)
 async function checkAndSendEvents() {
   const today = new Date();
   const currentDay = today.getDate();
-  const currentMonth = today.getMonth() + 1; // เดือนใน JavaScript เริ่มจาก 0 (ม.ค. = 0)
+  const currentMonth = today.getMonth() + 1; 
 
   console.log(`[Cron Job] กำลังตรวจสอบวันสำคัญประจำวันที่ ${currentDay}/${currentMonth}...`);
 
@@ -62,15 +62,15 @@ async function checkAndSendEvents() {
     }
 
     for (const event of rows) {
+      if (!event.user_id) continue;
+
       let isMatch = false;
 
       if (event.type === 'yearly') {
-        // วันเกิด: เช็กวันและเดือนให้ตรงกัน
         if (event.target_day === currentDay && event.target_month === currentMonth) {
           isMatch = true;
         }
       } else if (event.type === 'monthly') {
-        // วันครบรอบ: เช็กแค่วันที่ตรงกันทุกเดือน
         if (event.target_day === currentDay) {
           isMatch = true;
         }
@@ -101,13 +101,13 @@ async function checkAndSendEvents() {
   });
 }
 
-// ตั้งเวลา Cron Job: ทำงานทุกวัน เวลา 00:01 น. (รูปแบบ: นาที ชั่วโมง วัน เดือน วันในสัปดาห์)
+// ตั้งเวลา Cron Job: ทุกวัน เวลา 00:01 น.
 cron.schedule('1 0 * * *', () => {
   console.log('⏰ Cron Job เริ่มทำงานตามเวลาที่กำหนด (00:01 น.)');
   checkAndSendEvents();
 });
 
-// Webhook สำหรับรับข้อความทั่วไปจาก LINE
+// Webhook สำหรับรับข้อความจากผู้ใช้
 app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
   try {
     const events = req.body.events;
@@ -124,6 +124,17 @@ const handleEvent = async (event) => {
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
+
+  const userId = event.source.userId;
+  console.log('My User ID is:', userId);
+
+  db.run(`UPDATE events SET user_id = ?`, [userId], (err) => {
+    if (err) {
+      console.error('Auto-save User ID failed:', err);
+    } else {
+      console.log('💾 Auto-saved User ID to database successfully!');
+    }
+  });
   
   return client.replyMessage({
     replyToken: event.replyToken,
@@ -131,6 +142,7 @@ const handleEvent = async (event) => {
   });
 };
 
+// บรรทัดสำคัญที่ทำให้เซิร์ฟเวอร์เปิดค้างไว้และไม่ปิดตัวเอง
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT} and Cron Job is scheduled.`);
 });
