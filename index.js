@@ -17,7 +17,6 @@ const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: env.CHANNEL_ACCESS_TOKEN
 });
 
-// ฟังก์ชันคำนวณอายุ (สำหรับวันเกิด)
 function calculateAge(birthDateStr) {
   const birthDate = new Date(birthDateStr);
   const today = new Date();
@@ -29,14 +28,11 @@ function calculateAge(birthDateStr) {
   return age;
 }
 
-// ฟังก์ชันคำนวณระยะเวลาคบกัน (สำหรับวันครบรอบ)
 function calculateDuration(startDateStr) {
   const start = new Date(startDateStr);
   const today = new Date();
-  
   let years = today.getFullYear() - start.getFullYear();
   let months = today.getMonth() - start.getMonth();
-  
   if (today.getDate() < start.getDate()) {
     months--;
   }
@@ -47,7 +43,6 @@ function calculateDuration(startDateStr) {
   return `${years} ปี ${months} เดือน`;
 }
 
-// ฟังก์ชันตรวจสอบและส่งข้อความแจ้งเตือน (Cron Job)
 async function checkAndSendEvents() {
   const today = new Date();
   const currentDay = today.getDate();
@@ -55,59 +50,58 @@ async function checkAndSendEvents() {
 
   console.log(`[Cron Job] กำลังตรวจสอบวันสำคัญประจำวันที่ ${currentDay}/${currentMonth}...`);
 
-  db.all(`SELECT * FROM events`, [], async (err, rows) => {
-    if (err) {
-      console.error('Database error:', err);
-      return;
-    }
+  db.all(`SELECT * FROM users`, [], (userErr, users) => {
+    if (userErr || users.length === 0) return;
 
-    for (const event of rows) {
-      if (!event.user_id) continue;
+    db.all(`SELECT * FROM events`, [], async (eventErr, events) => {
+      if (eventErr) return;
 
-      let isMatch = false;
-
-      if (event.type === 'yearly') {
-        if (event.target_day === currentDay && event.target_month === currentMonth) {
-          isMatch = true;
-        }
-      } else if (event.type === 'monthly') {
-        if (event.target_day === currentDay) {
-          isMatch = true;
-        }
-      }
-
-      if (isMatch) {
-        let messageText = event.message_template;
+      for (const event of events) {
+        let isMatch = false;
 
         if (event.type === 'yearly') {
-          const age = calculateAge(event.start_date);
-          messageText = messageText.replace('{age}', age);
+          if (event.target_day === currentDay && event.target_month === currentMonth) {
+            isMatch = true;
+          }
         } else if (event.type === 'monthly') {
-          const duration = calculateDuration(event.start_date);
-          messageText = messageText.replace('{duration}', duration);
+          if (event.target_day === currentDay) {
+            isMatch = true;
+          }
         }
 
-        try {
-          await client.pushMessage({
-            to: event.user_id,
-            messages: [{ type: 'text', text: messageText }]
-          });
-          console.log(`✅ ส่งข้อความอัตโนมัติสำเร็จ: "${event.event_name}"`);
-        } catch (error) {
-          console.error(`❌ ส่งข้อความไม่สำเร็จ:`, error.originalError?.response?.data || error);
+        if (isMatch) {
+          let messageText = event.message_template;
+
+          if (event.type === 'yearly') {
+            const age = calculateAge(event.start_date);
+            messageText = messageText.replace('{age}', age);
+          } else if (event.type === 'monthly') {
+            const duration = calculateDuration(event.start_date);
+            messageText = messageText.replace('{duration}', duration);
+          }
+
+          for (const user of users) {
+            try {
+              await client.pushMessage({
+                to: user.user_id,
+                messages: [{ type: 'text', text: messageText }]
+              });
+              console.log(`✅ ส่งข้อความอัตโนมัติสำเร็จไปยัง ${user.user_id}: "${event.event_name}"`);
+            } catch (error) {
+              console.error(`❌ ส่งข้อความไม่สำเร็จ:`, error.originalError?.response?.data || error);
+            }
+          }
         }
       }
-    }
+    });
   });
 }
 
-// ตั้งเวลา Cron Job: ทุกวัน เวลา 00:01 น.
 cron.schedule('1 0 * * *', () => {
   console.log('⏰ Cron Job เริ่มทำงานตามเวลาที่กำหนด (00:01 น.)');
   checkAndSendEvents();
 });
 
-// Webhook สำหรับรับข้อความจากผู้ใช้
 app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
   try {
     const events = req.body.events;
@@ -126,23 +120,43 @@ const handleEvent = async (event) => {
   }
 
   const userId = event.source.userId;
-  console.log('My User ID is:', userId);
+  const userText = event.message.text.trim();
 
-  db.run(`UPDATE events SET user_id = ?`, [userId], (err) => {
+  console.log(`Incoming message from ${userId}: "${userText}"`);
+
+  db.get(`SELECT * FROM users WHERE user_id = ?`, [userId], async (err, row) => {
     if (err) {
-      console.error('Auto-save User ID failed:', err);
-    } else {
-      console.log('💾 Auto-saved User ID to database successfully!');
+      console.error('Database error:', err);
+      return;
     }
-  });
-  
-  return client.replyMessage({
-    replyToken: event.replyToken,
-    messages: [{ type: 'text', text: `Echo: ${event.message.text}` }]
+
+    if (!row) {
+      if (userText === '25/09/2008') {
+        db.run(`INSERT OR IGNORE INTO users (user_id) VALUES (?)`, [userId], (insErr) => {
+          if (!insErr) {
+            console.log(`✅ ยืนยันตัวตนสำเร็จสำหรับ User: ${userId}`);
+          }
+        });
+
+        return client.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: 'text', text: '🎉 ยืนยันตัวตนสำเร็จ! ตอนนี้คุณเชื่อมต่อกับบอทรักษาความปลอดภัยและแจ้งเตือนเรียบร้อยแล้วครับ' }]
+        });
+      } else {
+        return client.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: 'text', text: 'ขออภัยครับ บอทนี้ใช้งานเฉพาะบุคคล กรุณากรอกรหัสลับให้ถูกต้องเพื่อเข้าใช้งาน' }]
+        });
+      }
+    }
+
+    return client.replyMessage({
+      replyToken: event.replyToken,
+      messages: [{ type: 'text', text: `Echo: ${userText}` }]
+    });
   });
 };
 
-// บรรทัดสำคัญที่ทำให้เซิร์ฟเวอร์เปิดค้างไว้และไม่ปิดตัวเอง
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT} and Cron Job is scheduled.`);
 });
