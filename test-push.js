@@ -38,7 +38,7 @@ function calculateDuration(startDateStr) {
 }
 
 // ดึงข้อมูลทั้งหมดจากฐานข้อมูลมาทดสอบส่ง
-db.all(`SELECT * FROM events`, [], async (err, rows) => {
+db.all(`SELECT * FROM events WHERE type = 'monthly'`, [], async (err, rows) => {
   if (err) {
     console.error('Database error:', err);
     return;
