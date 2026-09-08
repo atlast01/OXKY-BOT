@@ -124,13 +124,37 @@ const handleEvent = async (event) => {
 
   console.log(`Incoming message from ${userId}: "${userText}"`);
 
-  db.get(`SELECT * FROM users WHERE user_id = ?`, [userId], async (err, row) => {
-    if (err) {
-      console.error('Database error:', err);
+  // 1. ตรวจสอบก่อนว่าผู้ใช้นี้ถูกบล็อกอยู่หรือไม่
+  db.get(`SELECT * FROM blocked_users WHERE user_id = ?`, [userId], async (blockErr, blockedRow) => {
+    if (blockErr) {
+      console.error('Database error:', blockErr);
       return;
     }
 
-    if (!row) {
+    if (blockedRow) {
+      // ถ้าอยู่ในตารางบล็อก จะปฏิเสธทันทีและไม่เปิดโอกาสให้กรอกซ้ำ
+      return client.replyMessage({
+        replyToken: event.replyToken,
+        messages: [{ type: 'text', text: '❌ บัญชีของคุณถูกระงับการใช้งานเนื่องจากกรอกรหัสไม่ถูกต้อง กรุณาติดต่อผู้พัฒนาเพื่อปลดล็อก' }]
+      });
+    }
+
+    // 2. ตรวจสอบว่าผ่านการยืนยันตัวตน (Whitelist) แล้วหรือยัง
+    db.get(`SELECT * FROM users WHERE user_id = ?`, [userId], async (userErr, userRow) => {
+      if (userErr) {
+        console.error('Database error:', userErr);
+        return;
+      }
+
+      if (userRow) {
+        // หากอยู่ใน Whitelist แล้ว ให้ทำงานและตอบกลับตามปกติ
+        return client.replyMessage({
+          replyToken: event.replyToken,
+          messages: [{ type: 'text', text: `Echo: ${userText}` }]
+        });
+      }
+
+      // 3. เป็นผู้ใช้ใหม่: ตรวจสอบรหัสลับ (25/09/2008)
       if (userText === '25/09/2008') {
         db.run(`INSERT OR IGNORE INTO users (user_id) VALUES (?)`, [userId], (insErr) => {
           if (!insErr) {
@@ -140,23 +164,21 @@ const handleEvent = async (event) => {
 
         return client.replyMessage({
           replyToken: event.replyToken,
-          messages: [{ type: 'text', text: '🎉 ยืนยันตัวตนสำเร็จ! ตอนนี้คุณเชื่อมต่อกับบอทรักษาความปลอดภัยและแจ้งเตือนเรียบร้อยแล้วครับ' }]
+          messages: [{ type: 'text', text: '🎉 ยืนยันตัวตนสำเร็จ! ตอนนี้คุณเชื่อมต่อกับบอทแจ้งเตือนเรียบร้อยแล้วครับ' }]
         });
       } else {
+        // หากกรอกรหัสผิดพลาดแม้แต่ครั้งเดียว -> บันทึกลงตาราง blocked_users ทันทีเพื่อล็อกถาวร
+        db.run(`INSERT OR IGNORE INTO blocked_users (user_id) VALUES (?)`, [userId], (lockErr) => {
+          if (!lockErr) {
+            console.log(`🚨 กรอกรหัสผิด! ล็อก User: ${userId} เข้าสู่ตาราง blocked_users เรียบร้อย`);
+          }
+        });
+
         return client.replyMessage({
           replyToken: event.replyToken,
-          messages: [{ type: 'text', text: 'ขออภัยครับ บอทนี้ใช้งานเฉพาะบุคคล กรุณากรอกรหัสลับให้ถูกต้องเพื่อเข้าใช้งาน' }]
+          messages: [{ type: 'text', text: '❌ รหัสลับไม่ถูกต้อง! บัญชีของคุณถูกล็อกการใช้งานถาวรแล้ว กรุณาติดต่อผู้พัฒนา' }]
         });
       }
-    }
-
-    return client.replyMessage({
-      replyToken: event.replyToken,
-      messages: [{ type: 'text', text: `Echo: ${userText}` }]
     });
   });
 };
-
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT} and Cron Job is scheduled.`);
-});

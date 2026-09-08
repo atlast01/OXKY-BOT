@@ -32,6 +32,7 @@ function calculateDuration(startDateStr) {
 // พิมพ์ 'yearly' สำหรับวันเกิด หรือ 'monthly' สำหรับวันครบรอบ
 // ---------------------------------------------------------
 const targetType = 'yearly'; 
+const targetUserId = 'U465c7b1eeecf54b47b35cda82adb2003';
 
 db.all(`SELECT * FROM events WHERE type = ?`, [targetType], async (err, rows) => {
   if (err) {

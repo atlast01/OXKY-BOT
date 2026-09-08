@@ -23,7 +23,15 @@ db.serialize(() => {
     )
   `);
 
-  console.log('Database and tables ready.');
+  // ตาราง Blocked List: เก็บรายชื่อผู้ใช้ที่กรอกรหัสผิดและถูกล็อก
+  db.run(`
+    CREATE TABLE IF NOT EXISTS blocked_users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id TEXT UNIQUE
+    )
+    `)
+
+  console.log('Database, users, and blocked_users tables ready.');
 });
 
 module.exports = db;
