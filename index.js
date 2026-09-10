@@ -182,3 +182,7 @@ const handleEvent = async (event) => {
     });
   });
 };
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT} and Cron Job is scheduled.`);
+});
