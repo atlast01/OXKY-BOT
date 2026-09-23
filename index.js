@@ -6,6 +6,9 @@ const dotenv = require('dotenv');
 const startCronJob = require('./jobs/cronJob'); 
 const handleEvent = require('./handlers/messageHandler');
 
+// โหลด dotenv เฉพาะตอนรันบนเครื่อง Local (บน Render จะอ่านจากระบบอัตโนมัติ)
+dotenv.config(); 
+
 const env = dotenv.config().parsed;
 const app = express();
 const PORT = process.env.PORT || 5500;
