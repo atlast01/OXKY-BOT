@@ -6,20 +6,20 @@ const dotenv = require('dotenv');
 const startCronJob = require('./jobs/cronJob'); 
 const handleEvent = require('./handlers/messageHandler');
 
-// โหลด dotenv เฉพาะตอนรันบนเครื่อง Local (บน Render จะอ่านจากระบบอัตโนมัติ)
+// โหลด dotenv สำหรับรันบนเครื่อง Local
 dotenv.config(); 
 
-const env = dotenv.config().parsed;
 const app = express();
 const PORT = process.env.PORT || 5500;
 
+// แก้ไขให้ดึงจาก process.env โดยตรงทั้งคู่
 const lineConfig = {
-  channelAccessToken: env.CHANNEL_ACCESS_TOKEN,
-  channelSecret: env.CHANNEL_SECRET
+  channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
+  channelSecret: process.env.CHANNEL_SECRET
 };
 
 const client = new line.messagingApi.MessagingApiClient({
-  channelAccessToken: env.CHANNEL_ACCESS_TOKEN
+  channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN
 });
 
 // เริ่มการทำงานของ Cron Job ทันทีโดยส่ง client ไปให้ด้วย
