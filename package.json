@@ -4,7 +4,8 @@
   "description": "OXKY LINE bot is a LINE bot that sends notifications and birthday wishes for my girlfriend and me.",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "npm install --build-from-source sqlite3"
   },
   "repository": {
     "type": "git",
