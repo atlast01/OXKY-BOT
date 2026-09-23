@@ -1,4 +1,4 @@
-const db = require('./database');
+const db = require('./config/database');
 
 // ฝัง LINE ID ของคุณไว้ที่นี่ถาวร
 const myUserId = 'U465c7b1eeecf54b47b35cda82adb2003';

@@ -1,6 +1,6 @@
 require('dotenv').config();
 const line = require('@line/bot-sdk');
-const db = require('./database');
+const db = require('./config/database');
 
 const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN

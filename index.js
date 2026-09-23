@@ -1,8 +1,10 @@
 const line = require('@line/bot-sdk');
 const express = require('express');
-const cron = require('node-cron');
 const dotenv = require('dotenv');
-const db = require('./database');
+
+// นำเข้าโมดูลที่เราแยกไว้
+const startCronJob = require('./jobs/cronJob'); 
+const handleEvent = require('./handlers/messageHandler');
 
 const env = dotenv.config().parsed;
 const app = express();
@@ -17,171 +19,21 @@ const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: env.CHANNEL_ACCESS_TOKEN
 });
 
-function calculateAge(birthDateStr) {
-  const birthDate = new Date(birthDateStr);
-  const today = new Date();
-  let age = today.getFullYear() - birthDate.getFullYear();
-  const m = today.getMonth() - birthDate.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
-    age--;
-  }
-  return age;
-}
-
-function calculateDuration(startDateStr) {
-  const start = new Date(startDateStr);
-  const today = new Date();
-  let years = today.getFullYear() - start.getFullYear();
-  let months = today.getMonth() - start.getMonth();
-  if (today.getDate() < start.getDate()) {
-    months--;
-  }
-  if (months < 0) {
-    years--;
-    months += 12;
-  }
-  return `${years} ปี ${months} เดือน`;
-}
-
-async function checkAndSendEvents() {
-  const today = new Date();
-  const currentDay = today.getDate();
-  const currentMonth = today.getMonth() + 1; 
-
-  console.log(`[Cron Job] กำลังตรวจสอบวันสำคัญประจำวันที่ ${currentDay}/${currentMonth}...`);
-
-  db.all(`SELECT * FROM users`, [], (userErr, users) => {
-    if (userErr || users.length === 0) return;
-
-    db.all(`SELECT * FROM events`, [], async (eventErr, events) => {
-      if (eventErr) return;
-
-      for (const event of events) {
-        let isMatch = false;
-
-        if (event.type === 'yearly') {
-          if (event.target_day === currentDay && event.target_month === currentMonth) {
-            isMatch = true;
-          }
-        } else if (event.type === 'monthly') {
-          if (event.target_day === currentDay) {
-            isMatch = true;
-          }
-        }
-
-        if (isMatch) {
-          let messageText = event.message_template;
-
-          if (event.type === 'yearly') {
-            const age = calculateAge(event.start_date);
-            messageText = messageText.replace('{age}', age);
-          } else if (event.type === 'monthly') {
-            const duration = calculateDuration(event.start_date);
-            messageText = messageText.replace('{duration}', duration);
-          }
-
-          for (const user of users) {
-            try {
-              await client.pushMessage({
-                to: user.user_id,
-                messages: [{ type: 'text', text: messageText }]
-              });
-              console.log(`✅ ส่งข้อความอัตโนมัติสำเร็จไปยัง ${user.user_id}: "${event.event_name}"`);
-            } catch (error) {
-              console.error(`❌ ส่งข้อความไม่สำเร็จ:`, error.originalError?.response?.data || error);
-            }
-          }
-        }
-      }
-    });
-  });
-}
-
-cron.schedule('1 0 * * *', () => {
-  console.log('⏰ Cron Job เริ่มทำงานตามเวลาที่กำหนด (00:01 น.)');
-  checkAndSendEvents();
-});
+// เริ่มการทำงานของ Cron Job ทันทีโดยส่ง client ไปให้ด้วย
+startCronJob(client);
 
 app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
   try {
     const events = req.body.events;
     return events.length > 0 
-      ? await Promise.all(events.map(item => handleEvent(item))) 
+      // โยน event และตัวแปร client ไปให้ไฟล์ messageHandler จัดการ
+      ? await Promise.all(events.map(item => handleEvent(item, client))) 
       : res.status(200).send("OK");
   } catch (error) {
     console.error(error);
     res.status(500).end();
   }
 });
-
-const handleEvent = async (event) => {
-  if (event.type !== 'message' || event.message.type !== 'text') {
-    return Promise.resolve(null);
-  }
-
-  const userId = event.source.userId;
-  const userText = event.message.text.trim();
-
-  console.log(`Incoming message from ${userId}: "${userText}"`);
-
-  // 1. ตรวจสอบก่อนว่าผู้ใช้นี้ถูกบล็อกอยู่หรือไม่
-  db.get(`SELECT * FROM blocked_users WHERE user_id = ?`, [userId], async (blockErr, blockedRow) => {
-    if (blockErr) {
-      console.error('Database error:', blockErr);
-      return;
-    }
-
-    if (blockedRow) {
-      // ถ้าอยู่ในตารางบล็อก จะปฏิเสธทันทีและไม่เปิดโอกาสให้กรอกซ้ำ
-      return client.replyMessage({
-        replyToken: event.replyToken,
-        messages: [{ type: 'text', text: '❌ บัญชีของคุณถูกระงับการใช้งานเนื่องจากกรอกรหัสไม่ถูกต้อง กรุณาติดต่อผู้พัฒนาเพื่อปลดล็อก' }]
-      });
-    }
-
-    // 2. ตรวจสอบว่าผ่านการยืนยันตัวตน (Whitelist) แล้วหรือยัง
-    db.get(`SELECT * FROM users WHERE user_id = ?`, [userId], async (userErr, userRow) => {
-      if (userErr) {
-        console.error('Database error:', userErr);
-        return;
-      }
-
-      if (userRow) {
-        // หากอยู่ใน Whitelist แล้ว ให้ทำงานและตอบกลับตามปกติ
-        return client.replyMessage({
-          replyToken: event.replyToken,
-          messages: [{ type: 'text', text: `Echo: ${userText}` }]
-        });
-      }
-
-      // 3. เป็นผู้ใช้ใหม่: ตรวจสอบรหัสลับ (25/09/2008)
-      if (userText === '25/09/2008') {
-        db.run(`INSERT OR IGNORE INTO users (user_id) VALUES (?)`, [userId], (insErr) => {
-          if (!insErr) {
-            console.log(`✅ ยืนยันตัวตนสำเร็จสำหรับ User: ${userId}`);
-          }
-        });
-
-        return client.replyMessage({
-          replyToken: event.replyToken,
-          messages: [{ type: 'text', text: '🎉 ยืนยันตัวตนสำเร็จ! ตอนนี้คุณเชื่อมต่อกับบอทแจ้งเตือนเรียบร้อยแล้วครับ' }]
-        });
-      } else {
-        // หากกรอกรหัสผิดพลาดแม้แต่ครั้งเดียว -> บันทึกลงตาราง blocked_users ทันทีเพื่อล็อกถาวร
-        db.run(`INSERT OR IGNORE INTO blocked_users (user_id) VALUES (?)`, [userId], (lockErr) => {
-          if (!lockErr) {
-            console.log(`🚨 กรอกรหัสผิด! ล็อก User: ${userId} เข้าสู่ตาราง blocked_users เรียบร้อย`);
-          }
-        });
-
-        return client.replyMessage({
-          replyToken: event.replyToken,
-          messages: [{ type: 'text', text: '❌ รหัสลับไม่ถูกต้อง! บัญชีของคุณถูกล็อกการใช้งานถาวรแล้ว กรุณาติดต่อผู้พัฒนา' }]
-        });
-      }
-    });
-  });
-};
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT} and Cron Job is scheduled.`);
