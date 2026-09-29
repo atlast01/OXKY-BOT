@@ -38,6 +38,13 @@ app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
   }
 });
 
+// ...webhook...
+
+// เพิ่มโค้ดชุดนี้เพื่อให้ cron-job.org ยิงเข้ามาแล้วได้รับสถานะสำเร็จ (200 OK)
+app.get('/', (req, res) => {
+  res.status(200).send("Bot is alive!");
+});
+
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT} and Cron Job is scheduled.`);
 });
