@@ -5,7 +5,7 @@ db.serialize(() => {
   // 1. --- ล็อก User ID ถาวร (เพิ่มโค้ดส่วนนี้เข้ามา) ---
   const myUsers = [
     "U465c7b1eeecf54b47b35cda82adb2003", // ไอดีของคุณ
-    "U271b46725cdb53d138ea4d55a860e0de"     // นำไอดีของแฟนมาวางแทนข้อความนี้
+    "U271b46725cdb53d138ea4d55a860e0de"     // นำไอดีแฟน
   ];
 
   myUsers.forEach(userId => {

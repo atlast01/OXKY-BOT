@@ -9,9 +9,9 @@ function startCronJob(client) {
   // Core function to check database events and send notifications 
   async function checkAndSendEvents() {
     // Get current date, day, and month
-    const today = new Date();
-    const currentDay = today.getDate();
-    const currentMonth = today.getMonth() + 1; 
+    const now = new Date();
+    const currentDay = parseInt(now.toLocaleDateString('en-GB', { timeZone: 'Asia/Bangkok', day: 'numeric'}));
+    const currentMonth = parseInt(now.toLocaleDateString('en-GB', { timeZone:'Asia/Bangkok', month: 'numeric'}));
 
     console.log(`[Cron Job] Checking events for date: ${currentDay}/${currentMonth}...`);
 
