@@ -2,17 +2,17 @@ const line = require('@line/bot-sdk');
 const express = require('express');
 const dotenv = require('dotenv');
 
-// นำเข้าโมดูลที่เราแยกไว้
+// Import separated modules
 const startCronJob = require('./jobs/cronJob'); 
 const handleEvent = require('./handlers/messageHandler');
 
-// โหลด dotenv สำหรับรันบนเครื่อง Local
+// Load environment variables for local testing
 dotenv.config(); 
 
 const app = express();
 const PORT = process.env.PORT || 5500;
 
-// แก้ไขให้ดึงจาก process.env โดยตรงทั้งคู่
+// Configure LINE SDK using environment variables
 const lineConfig = {
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN,
   channelSecret: process.env.CHANNEL_SECRET
@@ -22,29 +22,33 @@ const client = new line.messagingApi.MessagingApiClient({
   channelAccessToken: process.env.CHANNEL_ACCESS_TOKEN
 });
 
-// เริ่มการทำงานของ Cron Job ทันทีโดยส่ง client ไปให้ด้วย
+// Start the Cron Job immediately and pass the LINE client
 startCronJob(client);
 
+// Webhook endpoint for receiving messages from LINE
 app.post('/webhook', line.middleware(lineConfig), async (req, res) => {
   try {
     const events = req.body.events;
-    return events.length > 0 
-      // โยน event และตัวแปร client ไปให้ไฟล์ messageHandler จัดการ
-      ? await Promise.all(events.map(item => handleEvent(item, client))) 
-      : res.status(200).send("OK");
+    
+    // Process all events if there are any
+    if (events.length > 0) {
+      await Promise.all(events.map(item => handleEvent(item, client)));
+    }
+    
+    // ALWAYS send 200 OK back to LINE server to acknowledge receipt
+    res.status(200).send("OK");
   } catch (error) {
-    console.error(error);
+    console.error('❌ Webhook Error:', error);
     res.status(500).end();
   }
 });
 
-// ...webhook...
-
-// เพิ่มโค้ดชุดนี้เพื่อให้ cron-job.org ยิงเข้ามาแล้วได้รับสถานะสำเร็จ (200 OK)
+// Health check endpoint for keep-alive services (e.g., cron-job.org)
 app.get('/', (req, res) => {
   res.status(200).send("Bot is alive!");
 });
 
+// Start the server
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT} and Cron Job is scheduled.`);
+  console.log(`🚀 Server is running on port ${PORT} and Cron Job is scheduled.`);
 });
