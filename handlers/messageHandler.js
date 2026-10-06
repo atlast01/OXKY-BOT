@@ -1,6 +1,7 @@
 const db = require('../config/database');
 
 const handleEvent = async (event, client) => {
+  // Ignore non-message events or non-text messages
   if (event.type !== 'message' || event.message.type !== 'text') {
     return Promise.resolve(null);
   }
@@ -10,10 +11,10 @@ const handleEvent = async (event, client) => {
 
   console.log(`Incoming message from ${userId}: "${userText}"`);
 
-  // 1. ตรวจสอบก่อนว่าผู้ใช้นี้ถูกบล็อกอยู่หรือไม่
+  // 1. Check if the user is in the blocked list
   db.get(`SELECT * FROM blocked_users WHERE user_id = ?`, [userId], async (blockErr, blockedRow) => {
     if (blockErr) {
-      console.error('Database error:', blockErr);
+      console.error('❌ Database error (checking blocked_users):', blockErr);
       return;
     }
 
@@ -24,25 +25,26 @@ const handleEvent = async (event, client) => {
       });
     }
 
-    // 2. ตรวจสอบว่าผ่านการยืนยันตัวตน (Whitelist) แล้วหรือยัง
+    // 2. Check if the user is already verified (Whitelisted)
     db.get(`SELECT * FROM users WHERE user_id = ?`, [userId], async (userErr, userRow) => {
       if (userErr) {
-        console.error('Database error:', userErr);
+        console.error('❌ Database error (checking users):', userErr);
         return;
       }
 
       if (userRow) {
+        // Standard reply for verified users
         return client.replyMessage({
           replyToken: event.replyToken,
           messages: [{ type: 'text', text: `Echo: ${userText}` }]
         });
       }
 
-      // 3. เป็นผู้ใช้ใหม่: ตรวจสอบรหัสลับ
+      // 3. New user: Validate the secret code
       if (userText === '25/09/2008') {
         db.run(`INSERT OR IGNORE INTO users (user_id) VALUES (?)`, [userId], (insErr) => {
           if (!insErr) {
-            console.log(`✅ ยืนยันตัวตนสำเร็จสำหรับ User: ${userId}`);
+            console.log(`✅ Verification successful. Added User: ${userId} to whitelist.`);
           }
         });
 
@@ -53,7 +55,7 @@ const handleEvent = async (event, client) => {
       } else {
         db.run(`INSERT OR IGNORE INTO blocked_users (user_id) VALUES (?)`, [userId], (lockErr) => {
           if (!lockErr) {
-            console.log(`🚨 กรอกรหัสผิด! ล็อก User: ${userId} เข้าสู่ตาราง blocked_users เรียบร้อย`);
+            console.log(`🚨 Incorrect code entered. User: ${userId} has been blocked.`);
           }
         });
 
