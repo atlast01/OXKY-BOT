@@ -23,7 +23,7 @@ function startCronJob(client) {
       db.all(`SELECT * FROM events`, [], async (eventErr, events) => {
         if (eventErr) return;
 
-        // Step 3: Loop through each event to find a motch for today
+        // Step 3: Loop through each event to find a match for today
         for (const event of events) {
           let isMatch = false;
 
@@ -42,7 +42,7 @@ function startCronJob(client) {
           if (isMatch) {
             let messageText = event.message_template;
 
-            // Replace dinamic placeholders ({age} or {duration}) in the message
+            // Replace dynamic placeholders ({age} or {duration}) in the message
             if (event.type === 'yearly') {
               const age = calculateAge(event.start_date);
               messageText = messageText.replace('{age}', age);
@@ -71,7 +71,7 @@ function startCronJob(client) {
 
   // Schedule the job to run daily at 00:01 (1 minute past midnight) in Asia/Bangkok timezone
   cron.schedule('1 0 * * *', () => {
-    console.log('⏰ Cron Job triggered at  triggered at scheduled time (00:01).');
+    console.log('⏰ Cron Job triggered at scheduled time (00:01).');
     checkAndSendEvents();
   }, {
     scheduled: true,
